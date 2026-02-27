@@ -1,0 +1,5 @@
+game.exe
+*.dll
+*.o
+*.obj
+*.exe
