@@ -53,3 +53,4 @@ C:\msys64\msys2_shell.cmd -defterm -here -no-start -ucrt64 -c "cd 'C:/Users/kris
 - `Down`: soft drop
 - `Space`: hard drop
 - `R`: restart game
+# Tetris
