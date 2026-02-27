@@ -156,9 +156,10 @@ int main()
 
     int board[20][10] = {};
     Piece current{};
+    constexpr int kPreviewCount = 5;
     std::array<int, 7> bag = {0, 1, 2, 3, 4, 5, 6};
+    std::array<int, kPreviewCount> nextQueue = {};
     int bagIndex = 7;
-    int nextType = 0;
     int holdType = -1;
     bool holdUsed = false;
     int score = 0;
@@ -167,6 +168,16 @@ int main()
     bool gameOver = false;
     bool wasGameOver = false;
     float fallTimer = 0.0f;
+    float lockTimer = 0.0f;
+    bool grounded = false;
+    int lockResets = 0;
+    const float lockDelay = 0.45f;
+    const int maxLockResets = 12;
+    int moveDir = 0;
+    float moveHoldTimer = 0.0f;
+    float moveRepeatTimer = 0.0f;
+    const float dasDelay = 0.16f;
+    const float arrDelay = 0.045f;
     float shakeTimer = 0.0f;
     float shakeStrength = 0.0f;
     float lineFlashTimer = 0.0f;
@@ -188,12 +199,19 @@ int main()
     };
 
     auto spawnPiece = [&]() {
-        current.type = nextType;
+        current.type = nextQueue[0];
         current.rotation = 0;
         current.x = 3;
         current.y = -1;
-        nextType = popFromBag();
+        for (int i = 0; i < kPreviewCount - 1; i++) nextQueue[i] = nextQueue[i + 1];
+        nextQueue[kPreviewCount - 1] = popFromBag();
         holdUsed = false;
+        grounded = false;
+        lockTimer = 0.0f;
+        lockResets = 0;
+        moveDir = 0;
+        moveHoldTimer = 0.0f;
+        moveRepeatTimer = 0.0f;
         if (Collides(board, current)) gameOver = true;
         if (!gameOver && hasBarkSfx) PlaySound(sfxBark);
     };
@@ -210,11 +228,36 @@ int main()
         holdType = -1;
         holdUsed = false;
         fallTimer = 0.0f;
+        lockTimer = 0.0f;
+        grounded = false;
+        lockResets = 0;
+        moveDir = 0;
+        moveHoldTimer = 0.0f;
+        moveRepeatTimer = 0.0f;
         shakeTimer = 0.0f;
         lineFlashTimer = 0.0f;
         bagIndex = 7;
-        nextType = popFromBag();
+        for (int i = 0; i < kPreviewCount; i++) nextQueue[i] = popFromBag();
         spawnPiece();
+    };
+
+    auto resetLockDelay = [&]() {
+        if (grounded && lockResets < maxLockResets) {
+            lockTimer = 0.0f;
+            lockResets++;
+        }
+    };
+
+    auto tryMoveHorizontal = [&](int dir) -> bool {
+        Piece test = current;
+        test.x += dir;
+        if (!Collides(board, test)) {
+            current = test;
+            resetLockDelay();
+            if (hasMoveSfx) PlaySound(sfxMove);
+            return true;
+        }
+        return false;
     };
 
     auto tryRotateWithKicks = [&](int direction) -> bool {
@@ -228,6 +271,7 @@ int main()
             candidate.y += kicks[i][1];
             if (!Collides(board, candidate)) {
                 current = candidate;
+                resetLockDelay();
                 if (hasRotateSfx) PlaySound(sfxRotate);
                 return true;
             }
@@ -245,7 +289,7 @@ int main()
         }
     };
 
-    nextType = popFromBag();
+    for (int i = 0; i < kPreviewCount; i++) nextQueue[i] = popFromBag();
     spawnPiece();
 
     while (!WindowShouldClose()) {
@@ -264,21 +308,49 @@ int main()
             float currentFall = IsKeyDown(KEY_DOWN) ? 0.05f : baseFall;
 
             if (IsKeyPressed(KEY_LEFT)) {
-                Piece test = current;
-                test.x--;
-                if (!Collides(board, test)) {
-                    current = test;
-                    if (hasMoveSfx) PlaySound(sfxMove);
-                }
+                moveDir = -1;
+                moveHoldTimer = 0.0f;
+                moveRepeatTimer = 0.0f;
+                tryMoveHorizontal(-1);
             }
             if (IsKeyPressed(KEY_RIGHT)) {
-                Piece test = current;
-                test.x++;
-                if (!Collides(board, test)) {
-                    current = test;
-                    if (hasMoveSfx) PlaySound(sfxMove);
+                moveDir = 1;
+                moveHoldTimer = 0.0f;
+                moveRepeatTimer = 0.0f;
+                tryMoveHorizontal(1);
+            }
+
+            if (moveDir == -1 && !IsKeyDown(KEY_LEFT)) {
+                if (IsKeyDown(KEY_RIGHT)) {
+                    moveDir = 1;
+                    moveHoldTimer = 0.0f;
+                    moveRepeatTimer = 0.0f;
+                    tryMoveHorizontal(1);
+                } else {
+                    moveDir = 0;
+                }
+            } else if (moveDir == 1 && !IsKeyDown(KEY_RIGHT)) {
+                if (IsKeyDown(KEY_LEFT)) {
+                    moveDir = -1;
+                    moveHoldTimer = 0.0f;
+                    moveRepeatTimer = 0.0f;
+                    tryMoveHorizontal(-1);
+                } else {
+                    moveDir = 0;
                 }
             }
+
+            if ((moveDir == -1 && IsKeyDown(KEY_LEFT)) || (moveDir == 1 && IsKeyDown(KEY_RIGHT))) {
+                moveHoldTimer += dt;
+                if (moveHoldTimer >= dasDelay) {
+                    moveRepeatTimer += dt;
+                    while (moveRepeatTimer >= arrDelay) {
+                        tryMoveHorizontal(moveDir);
+                        moveRepeatTimer -= arrDelay;
+                    }
+                }
+            }
+
             if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_X)) tryRotateWithKicks(1);
             if (IsKeyPressed(KEY_Z)) tryRotateWithKicks(-1);
 
@@ -293,10 +365,37 @@ int main()
                     current.rotation = 0;
                     current.x = 3;
                     current.y = -1;
+                    grounded = false;
+                    lockTimer = 0.0f;
+                    lockResets = 0;
                     if (Collides(board, current)) gameOver = true;
                 }
                 holdUsed = true;
             }
+
+            auto lockAndSpawn = [&]() {
+                LockPiece(board, current, gameOver);
+                if (!gameOver) {
+                    shakeTimer = 0.05f;
+                    shakeStrength = 2.5f;
+                    if (hasLockSfx) PlaySound(sfxLock);
+                }
+                if (!gameOver) {
+                    int cleared = ClearLines(board);
+                    lines += cleared;
+                    if (cleared > 0) {
+                        lineFlashTimer = 0.12f;
+                        shakeTimer = 0.09f;
+                        shakeStrength = 3.5f + cleared * 0.7f;
+                        if (hasLineClearSfx) PlaySound(sfxLineClear);
+                    }
+                    if (cleared == 1) score += 100 * level;
+                    if (cleared == 2) score += 300 * level;
+                    if (cleared == 3) score += 500 * level;
+                    if (cleared == 4) score += 800 * level;
+                    spawnPiece();
+                }
+            };
 
             if (IsKeyPressed(KEY_SPACE)) {
                 Piece test = current;
@@ -304,39 +403,36 @@ int main()
                     current = test;
                     test.y++;
                 }
-                fallTimer = currentFall;
+                lockAndSpawn();
+                fallTimer = 0.0f;
             }
 
             fallTimer += dt;
             if (fallTimer >= currentFall) {
-                fallTimer = 0.0f;
+                fallTimer -= currentFall;
                 Piece test = current;
                 test.y++;
                 if (!Collides(board, test)) {
                     current = test;
-                } else {
-                    LockPiece(board, current, gameOver);
-                    if (!gameOver) {
-                        shakeTimer = 0.05f;
-                        shakeStrength = 2.5f;
-                        if (hasLockSfx) PlaySound(sfxLock);
-                    }
-                    if (!gameOver) {
-                        int cleared = ClearLines(board);
-                        lines += cleared;
-                        if (cleared > 0) {
-                            lineFlashTimer = 0.12f;
-                            shakeTimer = 0.09f;
-                            shakeStrength = 3.5f + cleared * 0.7f;
-                            if (hasLineClearSfx) PlaySound(sfxLineClear);
-                        }
-                        if (cleared == 1) score += 100 * level;
-                        if (cleared == 2) score += 300 * level;
-                        if (cleared == 3) score += 500 * level;
-                        if (cleared == 4) score += 800 * level;
-                        spawnPiece();
-                    }
                 }
+            }
+
+            Piece below = current;
+            below.y++;
+            if (Collides(board, below)) {
+                if (!grounded) {
+                    grounded = true;
+                    lockTimer = 0.0f;
+                    lockResets = 0;
+                } else {
+                    lockTimer += dt;
+                }
+
+                if (lockTimer >= lockDelay || lockResets >= maxLockResets) lockAndSpawn();
+            } else {
+                grounded = false;
+                lockTimer = 0.0f;
+                lockResets = 0;
             }
         }
 
@@ -414,9 +510,11 @@ int main()
         DrawRectangle(40, 240, 170, 120, {28, 28, 38, 255});
         drawPreviewPiece(holdType, 78, 260, 24);
 
-        DrawText("Next:", 560, 55, 28, RAYWHITE);
-        DrawRectangle(560, 90, 150, 120, {28, 28, 38, 255});
-        drawPreviewPiece(nextType, 590, 110, 24);
+        DrawText("Next:", 560, 35, 28, RAYWHITE);
+        DrawRectangle(560, 70, 170, 340, {28, 28, 38, 255});
+        for (int i = 0; i < kPreviewCount; i++) {
+            drawPreviewPiece(nextQueue[i], 608, 84 + i * 64, 16);
+        }
 
         DrawText("Controls:", 540, 235, 24, RAYWHITE);
         DrawText("Left/Right: Move", 540, 268, 20, LIGHTGRAY);
