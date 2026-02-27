@@ -1,6 +1,7 @@
 #include "raylib.h"
 #include <cmath>
 #include <array>
+#include <string>
 
 struct Piece {
     int type;
@@ -129,11 +130,13 @@ int main()
     Sound sfxLock{};
     Sound sfxLineClear{};
     Sound sfxGameOver{};
+    Sound sfxBark{};
     bool hasMoveSfx = false;
     bool hasRotateSfx = false;
     bool hasLockSfx = false;
     bool hasLineClearSfx = false;
     bool hasGameOverSfx = false;
+    bool hasBarkSfx = false;
 
     auto loadSfx = [](const char* path, Sound& target, bool& readyFlag) {
         if (FileExists(path)) {
@@ -148,6 +151,41 @@ int main()
     loadSfx("assets/sounds/lock.wav", sfxLock, hasLockSfx);
     loadSfx("assets/sounds/line_clear.wav", sfxLineClear, hasLineClearSfx);
     loadSfx("assets/sounds/game_over.wav", sfxGameOver, hasGameOverSfx);
+    loadSfx("assets/sounds/bark.wav", sfxBark, hasBarkSfx);
+    if (hasBarkSfx) SetSoundVolume(sfxBark, 0.45f);
+
+    Texture2D dogTextures[3]{};
+    bool hasDogTexture[3] = {false, false, false};
+    int dogTextureCount = 0;
+    int currentDogTexture = -1;
+
+    auto findDogImagePath = [](const char* baseName) -> std::string {
+        const char* folders[2] = {"Images", "images"};
+        const char* extensions[5] = {".png", ".jpg", ".jpeg", ".bmp", ".tga"};
+
+        for (int f = 0; f < 2; f++) {
+            std::string rawPath = std::string(folders[f]) + "/" + baseName;
+            if (FileExists(rawPath.c_str())) return rawPath;
+
+            for (int e = 0; e < 5; e++) {
+                std::string path = rawPath + extensions[e];
+                if (FileExists(path.c_str())) return path;
+            }
+        }
+        return "";
+    };
+
+    const char* dogNames[3] = {"Eathan1", "Eathan2", "Eathan3"};
+    for (int i = 0; i < 3; i++) {
+        std::string dogPath = findDogImagePath(dogNames[i]);
+        if (!dogPath.empty()) {
+            dogTextures[i] = LoadTexture(dogPath.c_str());
+            if (dogTextures[i].id > 0) {
+                hasDogTexture[i] = true;
+                dogTextureCount++;
+            }
+        }
+    }
 
     int board[20][10] = {};
     Piece current{};
@@ -189,7 +227,18 @@ int main()
         current.y = -1;
         nextType = popFromBag();
         holdUsed = false;
+        if (dogTextureCount > 0) {
+            int pick = GetRandomValue(0, 2);
+            for (int i = 0; i < 3; i++) {
+                int idx = (pick + i) % 3;
+                if (hasDogTexture[idx]) {
+                    currentDogTexture = idx;
+                    break;
+                }
+            }
+        }
         if (Collides(board, current)) gameOver = true;
+        if (!gameOver && hasBarkSfx) PlaySound(sfxBark);
     };
 
     auto resetGame = [&]() {
@@ -345,7 +394,15 @@ int main()
         }
 
         BeginDrawing();
-        ClearBackground({18, 18, 24, 255});
+        if (currentDogTexture >= 0) {
+            Texture2D bg = dogTextures[currentDogTexture];
+            Rectangle src = {0.0f, 0.0f, (float)bg.width, (float)bg.height};
+            Rectangle dst = {0.0f, 0.0f, (float)screenWidth, (float)screenHeight};
+            DrawTexturePro(bg, src, dst, {0.0f, 0.0f}, 0.0f, Fade(WHITE, 0.35f));
+            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.55f));
+        } else {
+            ClearBackground({18, 18, 24, 255});
+        }
 
         DrawRectangle(boardX - 2 + boardOffsetX, boardY - 2 + boardOffsetY, 10 * cellSize + 4, 20 * cellSize + 4, GRAY);
         DrawRectangle(boardX + boardOffsetX, boardY + boardOffsetY, 10 * cellSize, 20 * cellSize, BLACK);
@@ -439,6 +496,10 @@ int main()
     if (hasLockSfx) UnloadSound(sfxLock);
     if (hasLineClearSfx) UnloadSound(sfxLineClear);
     if (hasGameOverSfx) UnloadSound(sfxGameOver);
+    if (hasBarkSfx) UnloadSound(sfxBark);
+    for (int i = 0; i < 3; i++) {
+        if (hasDogTexture[i]) UnloadTexture(dogTextures[i]);
+    }
     CloseAudioDevice();
     CloseWindow();
     return 0;
