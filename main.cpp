@@ -103,11 +103,8 @@ static int ClearLines(int board[20][10])
 
 int main()
 {
-    const int screenWidth = 800;
-    const int screenHeight = 450;
-    const int cellSize = 20;
-    const int boardX = 280;
-    const int boardY = 25;
+    const int initialWidth = 1280;
+    const int initialHeight = 720;
 
     const Color pieceColors[8] = {
         {25, 25, 35, 255}, // empty (unused for blocks)
@@ -120,7 +117,8 @@ int main()
         ORANGE             // L
     };
 
-    InitWindow(screenWidth, screenHeight, "raylib - simple tetris");
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(initialWidth, initialHeight, "raylib - simple tetris");
     SetTargetFPS(60);
     InitAudioDevice();
 
@@ -439,6 +437,28 @@ int main()
         if (!wasGameOver && gameOver && hasGameOverSfx) PlaySound(sfxGameOver);
         wasGameOver = gameOver;
 
+        int screenWidth = GetScreenWidth();
+        int screenHeight = GetScreenHeight();
+
+        int maxCellByHeight = (screenHeight - 40) / 20;
+        int maxCellByWidth = (screenWidth - 440) / 10;
+        int cellSize = maxCellByHeight < maxCellByWidth ? maxCellByHeight : maxCellByWidth;
+        if (cellSize < 14) cellSize = 14;
+        if (cellSize > 34) cellSize = 34;
+
+        int boardWidth = 10 * cellSize;
+        int boardHeight = 20 * cellSize;
+        int panelWidth = 180;
+        int sideGap = cellSize + 8;
+        int totalLayoutWidth = panelWidth + sideGap + boardWidth + sideGap + panelWidth;
+        int layoutX = (screenWidth - totalLayoutWidth) / 2;
+        if (layoutX < 10) layoutX = 10;
+        int leftPanelX = layoutX;
+        int boardX = leftPanelX + panelWidth + sideGap;
+        int rightPanelX = boardX + boardWidth + sideGap;
+        int boardY = (screenHeight - boardHeight) / 2;
+        if (boardY < 10) boardY = 10;
+
         int boardOffsetX = 0;
         int boardOffsetY = 0;
         if (shakeTimer > 0.0f) {
@@ -501,38 +521,69 @@ int main()
             DrawRectangle(boardX + boardOffsetX, boardY + boardOffsetY, 10 * cellSize, 20 * cellSize, Fade(RAYWHITE, 0.28f * flash));
         }
 
-        DrawText("TETRIS", 40, 30, 40, RAYWHITE);
-        DrawText(TextFormat("Score: %i", score), 40, 95, 26, RAYWHITE);
-        DrawText(TextFormat("Lines: %i", lines), 40, 130, 26, RAYWHITE);
-        DrawText(TextFormat("Level: %i", level), 40, 165, 26, RAYWHITE);
+        int titleSize = cellSize + 16;
+        if (titleSize < 28) titleSize = 28;
+        if (titleSize > 48) titleSize = 48;
+        int statSize = cellSize / 2 + 14;
+        if (statSize < 20) statSize = 20;
+        if (statSize > 30) statSize = 30;
+        int labelSize = cellSize / 2 + 12;
+        if (labelSize < 18) labelSize = 18;
+        if (labelSize > 28) labelSize = 28;
+        int controlSize = cellSize / 3 + 10;
+        if (controlSize < 11) controlSize = 11;
+        if (controlSize > 16) controlSize = 16;
 
-        DrawText("Hold:", 40, 205, 28, RAYWHITE);
-        DrawRectangle(40, 240, 170, 120, {28, 28, 38, 255});
-        drawPreviewPiece(holdType, 78, 260, 24);
+        DrawText("TETRIS", leftPanelX, boardY + 10, titleSize, RAYWHITE);
+        DrawText(TextFormat("Score: %i", score), leftPanelX, boardY + 22 + titleSize, statSize, RAYWHITE);
+        DrawText(TextFormat("Lines: %i", lines), leftPanelX, boardY + 30 + titleSize + statSize, statSize, RAYWHITE);
+        DrawText(TextFormat("Level: %i", level), leftPanelX, boardY + 38 + titleSize + statSize * 2, statSize, RAYWHITE);
 
-        DrawText("Next:", 560, 35, 28, RAYWHITE);
-        DrawRectangle(560, 70, 170, 340, {28, 28, 38, 255});
+        int holdBoxY = boardY + 58 + titleSize + statSize * 3;
+        int holdBoxH = 120;
+        DrawText("Hold:", leftPanelX, holdBoxY - 32, labelSize, RAYWHITE);
+        DrawRectangle(leftPanelX, holdBoxY, panelWidth, holdBoxH, {28, 28, 38, 255});
+        int holdPreviewCell = cellSize + 3;
+        if (holdPreviewCell < 16) holdPreviewCell = 16;
+        if (holdPreviewCell > 24) holdPreviewCell = 24;
+        drawPreviewPiece(holdType, leftPanelX + (panelWidth - holdPreviewCell * 4) / 2, holdBoxY + 16, holdPreviewCell);
+
+        DrawText("Next:", rightPanelX, boardY + 10, labelSize, RAYWHITE);
+        int nextPreviewCell = cellSize - 6;
+        if (nextPreviewCell < 10) nextPreviewCell = 10;
+        if (nextPreviewCell > 16) nextPreviewCell = 16;
+        int nextStep = nextPreviewCell * 4 + 8;
+        int nextBoxY = boardY + 45;
+        int nextBoxH = kPreviewCount * nextStep + 12;
+        DrawRectangle(rightPanelX, nextBoxY, panelWidth, nextBoxH, {28, 28, 38, 255});
         for (int i = 0; i < kPreviewCount; i++) {
-            drawPreviewPiece(nextQueue[i], 608, 84 + i * 64, 16);
+            drawPreviewPiece(nextQueue[i], rightPanelX + (panelWidth - nextPreviewCell * 4) / 2, nextBoxY + 6 + i * nextStep, nextPreviewCell);
         }
 
-        DrawText("Controls:", 540, 235, 24, RAYWHITE);
-        DrawText("Left/Right: Move", 540, 268, 20, LIGHTGRAY);
-        DrawText("Up/X/Z: Rotate", 540, 295, 20, LIGHTGRAY);
-        DrawText("Down: Soft Drop", 540, 322, 20, LIGHTGRAY);
-        DrawText("Space: Hard Drop", 540, 349, 20, LIGHTGRAY);
-        DrawText("C: Hold Piece", 540, 376, 20, LIGHTGRAY);
-        DrawText("R: Restart", 540, 403, 20, LIGHTGRAY);
+        int controlsY = nextBoxY + nextBoxH + 14;
+        DrawText("Controls:", rightPanelX, controlsY, labelSize - 4, RAYWHITE);
+        DrawText("Left/Right: Move", rightPanelX, controlsY + 24, controlSize, LIGHTGRAY);
+        DrawText("Up/X/Z: Rotate", rightPanelX, controlsY + 24 + controlSize + 3, controlSize, LIGHTGRAY);
+        DrawText("Down: Soft Drop", rightPanelX, controlsY + 24 + (controlSize + 3) * 2, controlSize, LIGHTGRAY);
+        DrawText("Space: Hard Drop", rightPanelX, controlsY + 24 + (controlSize + 3) * 3, controlSize, LIGHTGRAY);
+        DrawText("C: Hold   R: Restart", rightPanelX, controlsY + 24 + (controlSize + 3) * 4, controlSize - 1, LIGHTGRAY);
 
         if (gameOver) {
             const char* text1 = "GAME OVER";
             const char* text2 = "Press R to restart";
-            int w1 = MeasureText(text1, 50);
-            int w2 = MeasureText(text2, 26);
+            int goTitleSize = titleSize;
+            int goSubSize = statSize;
+            int w1 = MeasureText(text1, goTitleSize);
+            int w2 = MeasureText(text2, goSubSize);
             float pulse = 0.55f + 0.45f * (0.5f + 0.5f * (float)std::sin((float)GetTime() * 6.0f));
-            DrawRectangle(150, 145, 500, 150, Fade(BLACK, 0.8f));
-            DrawText(text1, (screenWidth - w1) / 2, 170, 50, Fade(RED, pulse));
-            DrawText(text2, (screenWidth - w2) / 2, 230, 26, RAYWHITE);
+            int boxW = boardWidth + panelWidth;
+            if (boxW > screenWidth - 60) boxW = screenWidth - 60;
+            int boxH = goTitleSize + goSubSize + 60;
+            int boxX = (screenWidth - boxW) / 2;
+            int boxY = (screenHeight - boxH) / 2;
+            DrawRectangle(boxX, boxY, boxW, boxH, Fade(BLACK, 0.8f));
+            DrawText(text1, (screenWidth - w1) / 2, boxY + 16, goTitleSize, Fade(RED, pulse));
+            DrawText(text2, (screenWidth - w2) / 2, boxY + 24 + goTitleSize, goSubSize, RAYWHITE);
         }
 
         EndDrawing();
